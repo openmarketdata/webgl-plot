@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Webgl line plotting framework - Declarative plot() API</title>
+    <link rel="stylesheet" href="style.css" type="text/css" />
+  </head>
+
+  <body>
+    <div class="items">
+      <h1>Declarative plot() API Demo</h1>
+      <p>
+        Matplotlib-style JSON configuration:
+        <code>plot({ type: "line", "x-range": [-10, 10], data: { x: [...], y: [...] } })</code>
+      </p>
+      <h2>Line</h2>
+      <canvas class="canvas" id="lineCanvas"></canvas>
+      <h2>Scatter</h2>
+      <canvas class="canvas" id="scatterCanvas"></canvas>
+    </div>
+  </body>
+
+  <script type="module" src="./demo-plot.ts"></script>
+</html>

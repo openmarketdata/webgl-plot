@@ -59,6 +59,15 @@ export {
   DebugLogger,
 };
 
+// Export declarative matplotlib-style plotting API
+export {
+  plot,
+  type PlotConfig,
+  type PlotSeries,
+  type PlotType,
+  type PlotHandle,
+} from "./plot";
+
 // Export coordinate transformation utilities
 export {
   transformBoundsToLogSpace,
