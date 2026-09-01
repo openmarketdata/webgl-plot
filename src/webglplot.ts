@@ -65,6 +65,7 @@ export {
   type PlotConfig,
   type PlotSeries,
   type PlotType,
+  type PlotUpdate,
   type PlotHandle,
 } from "./plot";
 
