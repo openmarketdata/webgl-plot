@@ -45,6 +45,9 @@ export interface PlotConfig {
   markerSize?: number;
 }
 
+/** Partial configuration accepted by {@link PlotHandle.update}. */
+export type PlotUpdate = Partial<Omit<PlotConfig, "canvas">>;
+
 export interface PlotHandle {
   canvas: HTMLCanvasElement;
   gl: WebGL2RenderingContext;
@@ -52,6 +55,14 @@ export interface PlotHandle {
   xRange: [number, number];
   /** Y range used for the plot (explicit or computed from data). */
   yRange: [number, number];
+  /**
+   * Apply a partial configuration and re-render, e.g.
+   * `figure.update({ "x-range": [-20, 20] })` or
+   * `figure.update({ data: { x: [...], y: [...] } })`.
+   * Omitted keys keep their current values; pass `undefined` explicitly
+   * (e.g. `{ "x-range": undefined }`) to revert a range to the data extent.
+   */
+  update: (changes: PlotUpdate) => void;
   /** Re-render the plot. */
   redraw: () => void;
   /** Release WebGL resources. */
@@ -134,12 +145,18 @@ function toClipSpace(
   return points;
 }
 
-/**
- * Render a static plot from a matplotlib-like JSON configuration.
- *
- * Supported types: "line" (default) and "scatter".
- */
-export function plot(config: PlotConfig): PlotHandle {
+interface Scene {
+  xRange: [number, number];
+  yRange: [number, number];
+  draw: () => void;
+  cleanup: () => void;
+}
+
+function buildScene(
+  config: PlotConfig,
+  canvas: HTMLCanvasElement,
+  gl: WebGL2RenderingContext
+): Scene {
   const type: PlotType = config.type ?? "line";
   if (type !== "line" && type !== "scatter") {
     throw new Error(`plot: unsupported type "${String(type)}"`);
@@ -154,12 +171,6 @@ export function plot(config: PlotConfig): PlotHandle {
 
   const xRange = computeRange(seriesList, "x", config["x-range"]);
   const yRange = computeRange(seriesList, "y", config["y-range"]);
-
-  const canvas = resolveCanvas(config.canvas);
-  const gl = setupCanvasAndWebGL(canvas, {
-    antialias: true,
-    backgroundColor: config.backgroundColor ?? [0, 0, 0, 1],
-  });
 
   let drawFn: () => void;
   let cleanupFn: () => void;
@@ -199,18 +210,48 @@ export function plot(config: PlotConfig): PlotHandle {
     };
   }
 
+  return { xRange, yRange, draw: drawFn, cleanup: cleanupFn };
+}
+
+/**
+ * Render a plot from a matplotlib-like JSON configuration.
+ *
+ * Supported types: "line" (default) and "scatter". The returned handle's
+ * `update()` accepts partial config changes and re-renders.
+ */
+export function plot(config: PlotConfig): PlotHandle {
+  const canvas = resolveCanvas(config.canvas);
+  const gl = setupCanvasAndWebGL(canvas, {
+    antialias: true,
+    backgroundColor: config.backgroundColor ?? [0, 0, 0, 1],
+  });
+
+  let current: PlotConfig = { ...config };
+  let scene = buildScene(current, canvas, gl);
+
   const redraw = () => {
     clearCanvas(gl);
-    drawFn();
+    scene.draw();
   };
   redraw();
 
-  return {
+  const handle: PlotHandle = {
     canvas,
     gl,
-    xRange,
-    yRange,
+    xRange: scene.xRange,
+    yRange: scene.yRange,
+    update: (changes: PlotUpdate) => {
+      const next: PlotConfig = { ...current, ...changes, canvas };
+      const nextScene = buildScene(next, canvas, gl);
+      scene.cleanup();
+      current = next;
+      scene = nextScene;
+      handle.xRange = scene.xRange;
+      handle.yRange = scene.yRange;
+      redraw();
+    },
     redraw,
-    destroy: cleanupFn,
+    destroy: () => scene.cleanup(),
   };
+  return handle;
 }
