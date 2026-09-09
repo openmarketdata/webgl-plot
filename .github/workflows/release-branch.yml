@@ -1,0 +1,43 @@
+# Builds the package and force-pushes the prebuilt output (package.json + dist/)
+# to the `release` branch, so it can be installed from GitHub without npm publish:
+#   npm install github:openmarketdata/webgl-plot#release
+# Bun (used by Reflex) does not run git dependencies' `prepare` scripts, so the
+# built files must already be committed on the installed ref.
+
+name: Release branch
+
+on:
+  push:
+    branches: [webglplot-v2]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-branch
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/assemble-release.mjs
+      - name: Push release branch
+        working-directory: release
+        run: |
+          git init -q -b release
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Build ${GITHUB_SHA}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

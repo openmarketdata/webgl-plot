@@ -16,6 +16,12 @@ docs
 
 dist
 dist-demos
+release
+
+# python (reflex-webgl-plot)
+__pycache__
+build
+*.egg-info
 
 test-results
 .vercel
