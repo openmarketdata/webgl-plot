@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowNet — Order Routing Topology</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#12151d; --border:#242a38; --text:#d6dce8; --dim:#616d84;
+    --green:#34d399; --red:#fb7185; --blue:#60a5fa; --amber:#fbbf24; --cyan:#22d3ee; --violet:#a78bfa;
+    --green-bg:rgba(52,211,153,.15); --red-bg:rgba(251,113,133,.15); --blue-bg:rgba(96,165,250,.15);
+    --amber-bg:rgba(251,191,36,.15); --gray-bg:rgba(97,109,132,.15);
+    --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:14px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border)}
+  header .logo{color:var(--cyan);font-weight:700;letter-spacing:1.5px;font-size:13px}
+  .sym-pick,.res-pick{display:flex;gap:2px}
+  .sym-pick button,.res-pick button{background:transparent;border:1px solid transparent;color:var(--dim);padding:4px 12px;font:inherit;font-weight:700;cursor:pointer;border-radius:5px}
+  .sym-pick button.on{border-color:var(--cyan);color:var(--cyan);background:rgba(34,211,238,.08)}
+  .res-pick{margin-left:auto;background:#181c27;border-radius:7px;padding:2px}
+  .res-pick button.on{background:var(--violet);color:#0b0d12}
+  .res-lbl{color:var(--dim);font-size:11px}
+  header .hstat{display:flex;gap:18px;color:var(--dim);font-size:11px}
+  header .hstat b{color:var(--text)}
+  main{flex:1;display:flex;flex-direction:column;gap:6px;padding:6px;min-height:0}
+  .box{background:var(--panel);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .box .hd{display:flex;justify-content:space-between;padding:5px 12px;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);border-bottom:1px solid var(--border)}
+  .lg{font-size:10px;color:var(--dim)}
+  .cvw{flex:1;min-height:0;position:relative}
+  canvas{display:block;width:100%;height:100%}
+  /* top = network, bottom = ui6 (orders + synced charts) */
+  #netBox{flex:1}
+  .bottom{flex:1.2;display:grid;grid-template-columns:1fr 1fr;gap:6px;min-height:0}
+  .charts{display:flex;flex-direction:column;gap:6px;min-height:0}
+  #bafBox{flex:3} #imbBox{flex:1} #sprBox{flex:1} #qrBox{flex:1}
+  .progress{height:4px;background:#242a38;border-radius:3px;width:60px;overflow:hidden;display:inline-block;vertical-align:middle}
+  .progress i{display:block;height:100%;background:var(--green);border-radius:3px;transition:width .5s}
+  /* orders */
+  .orders{display:flex;flex-direction:column;min-height:0}
+  .filters{display:flex;gap:8px;padding:8px 12px 4px}
+  .chip{padding:4px 13px;border-radius:99px;border:1px solid var(--border);background:transparent;font:inherit;font-size:11px;font-weight:700;color:var(--dim);cursor:pointer}
+  .chip.on{background:var(--blue);border-color:var(--blue);color:#0b0d12}
+  .scroll{flex:1;overflow-y:auto}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:12px}
+  th{position:sticky;top:0;background:var(--panel);z-index:1;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);padding:7px 10px;border-bottom:1px solid var(--border)}
+  td{padding:6px 10px;border-bottom:1px solid #1a1f2b}
+  tr.new-row{animation:hl 1s}
+  @keyframes hl{0%{background:rgba(96,165,250,.18)}100%{background:transparent}}
+  .pill{padding:2px 9px;border-radius:99px;font-size:10px;font-weight:700}
+  .pill.NEW{background:var(--blue-bg);color:var(--blue)}
+  .pill.PARTIAL{background:var(--amber-bg);color:var(--amber)}
+  .pill.FILLED{background:var(--green-bg);color:var(--green)}
+  .pill.CANCELLED{background:var(--gray-bg);color:var(--dim)}
+  .pill.REJECTED{background:var(--red-bg);color:var(--red)}
+  .buy{color:var(--green);font-weight:700} .sell{color:var(--red);font-weight:700}
+  .up{color:var(--green)} .down{color:var(--red)}
+  ::-webkit-scrollbar{width:7px} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">⬡ FLOWNET</span>
+  <div class="sym-pick" id="picker"></div>
+  <div class="res-pick" id="resPick">
+    <button data-r="5" class="on">5s</button>
+    <button data-r="15">15s</button>
+    <button data-r="30">30s</button>
+  </div>
+  <span class="res-lbl" id="resLbl"></span>
+  <div class="hstat" id="hstat"></div>
+</header>
+<main>
+  <div class="box" id="netBox">
+    <div class="hd"><span>Network Flow — Order Routing</span>
+      <span class="lg">
+        <span style="color:var(--blue)">● order</span> ·
+        <span style="color:var(--green)">● fill/ack</span> ·
+        <span style="color:var(--red)">● reject</span> ·
+        <span style="color:var(--amber)">● cancel</span>
+      </span></div>
+    <div class="cvw"><canvas id="cvNet"></canvas></div>
+  </div>
+  <div class="bottom">
+    <div class="box orders">
+      <div class="hd"><span>Orders</span><span class="lg" id="stats"></span></div>
+      <div class="filters" id="filters"></div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>ID</th><th>Time</th><th>Client</th><th>Broker</th><th>Sym</th><th>Side</th><th>Qty</th><th>Filled</th><th>Px</th><th>Status</th></tr></thead>
+          <tbody id="orderBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="charts">
+      <div class="box" id="bafBox">
+        <div class="hd"><span id="bafHd">Bid / Ask / Fills — price lines + fill bubbles</span>
+          <span class="lg"><span style="color:var(--green)">— bid px</span> · <span style="color:var(--red)">— ask px</span> · ● fills @ VWAP</span></div>
+        <div class="cvw"><canvas id="cvBaf"></canvas></div>
+      </div>
+      <div class="box" id="imbBox">
+        <div class="hd"><span>Trade Imbalance / bucket</span><span class="lg"><span class="up">buy</span> / <span class="down">sell</span></span></div>
+        <div class="cvw"><canvas id="cvImb"></canvas></div>
+      </div>
+      <div class="box" id="sprBox">
+        <div class="hd"><span>Spread Width (avg bps / bucket)</span><span class="lg" id="sprNow"></span></div>
+        <div class="cvw"><canvas id="cvSpr"></canvas></div>
+      </div>
+      <div class="box" id="qrBox">
+        <div class="hd"><span>Quote Frequency (msgs / bucket)</span><span class="lg" id="qrNow"></span></div>
+        <div class="cvw"><canvas id="cvQr"></canvas></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+// ================= topology =================
+const N_CLIENTS=9, N_BROKERS=5;
+const clients=Array.from({length:N_CLIENTS},(_,i)=>({id:'CL-'+(101+i),glow:0}));
+const brokers=['GSCO','MSCO','JPMS','UBSW','BARX'].map(n=>({id:n,glow:0}));
+const hub={glow:0};
+let layout=null;
+
+const cvNet=document.getElementById('cvNet');
+function computeLayout(){
+  const w=cvNet.clientWidth,h=cvNet.clientHeight;
+  // clients: vertical arc cluster on left
+  clients.forEach((c,i)=>{
+    const f=(i+.5)/N_CLIENTS;
+    c.x=w*.09+Math.sin(f*Math.PI)*w*.045;
+    c.y=h*.12+f*h*.76;
+  });
+  hub.x=w*.5; hub.y=h*.5;
+  brokers.forEach((b,i)=>{
+    const f=(i+.5)/N_BROKERS;
+    b.x=w*.91-Math.sin(f*Math.PI)*w*.045;
+    b.y=h*.16+f*h*.68;
+  });
+  layout={w,h};
+}
+// ================= particles =================
+// particle: {from,to,color,t,speed,size,onArrive}
+let particles=[];
+const COL={order:'#60a5fa',fill:'#34d399',reject:'#fb7185',cancel:'#fbbf24'};
+function curve(a,b,t){
+  // quadratic bezier with slight vertical bow
+  const mx=(a.x+b.x)/2, my=(a.y+b.y)/2+(a.y===b.y?0:(a.y<b.y?-1:1))*Math.abs(a.y-b.y)*.18;
+  const u=1-t;
+  return{x:u*u*a.x+2*u*t*mx+t*t*b.x, y:u*u*a.y+2*u*t*my+t*t*b.y};
+}
+function send(from,to,type,onArrive){
+  particles.push({from,to,color:COL[type],t:0,speed:.008+Math.random()*.007,
+    size:type==='order'?3:2.6,onArrive});
+}
+let legIn=0,legOut=0; // per-second counters
+// full round trip: client -> hub -> broker -> hub -> client
+function launchOrder(cl,bk,order){
+  send(cl,hub,'order',()=>{ hub.glow=1; legIn++;
+    send(hub,bk,'order',()=>{ bk.glow=1; legOut++;
+      // broker responds after a delay
+      setTimeout(()=>{
+        const rnd=Math.random();
+        const type=rnd<.72?'fill':rnd<.86?'reject':'cancel';
+        if(order){
+          if(type==='fill'){
+            order.filled=Math.max(100,Math.floor(order.qty*(.2+Math.random()*.8)/100)*100);
+            order.avg=order.px*(1+(Math.random()-.5)*.0005);
+            order.status=order.filled>=order.qty?'FILLED':'PARTIAL';
+          } else order.status=type==='reject'?'REJECTED':'CANCELLED';
+          order.isNew=true;renderOrders();
+        }
+        send(bk,hub,type,()=>{ hub.glow=1; legOut++;
+          send(hub,cl,type,()=>{ cl.glow=1; legIn++; });
+        });
+      },300+Math.random()*1800);
+    });
+  });
+  cl.glow=1;
+}
+// heartbeat/quote traffic BTS->clients (background chatter)
+function chatter(){
+  if(Math.random()<.6){
+    const cl=clients[Math.floor(Math.random()*N_CLIENTS)];
+    send(hub,cl,'fill',()=>{cl.glow=.6;legIn++;});
+  }
+  if(Math.random()<.5){
+    const bk=brokers[Math.floor(Math.random()*N_BROKERS)];
+    send(bk,hub,'order',()=>{hub.glow=.6;legOut++;});
+  }
+}
+// ================= render network =================
+const nx=cvNet.getContext('2d');
+function drawNet(){
+  const dpr=devicePixelRatio||1,w=cvNet.clientWidth,h=cvNet.clientHeight;
+  if(!layout||layout.w!==w||layout.h!==h)computeLayout();
+  cvNet.width=w*dpr;cvNet.height=h*dpr;nx.setTransform(dpr,0,0,dpr,0,0);nx.clearRect(0,0,w,h);
+  // static links
+  nx.lineWidth=1;
+  clients.forEach(c=>{
+    nx.strokeStyle='rgba(96,165,250,.10)';
+    nx.beginPath();nx.moveTo(c.x,c.y);
+    const m=curve(c,hub,.5);nx.quadraticCurveTo(m.x*2-(c.x+hub.x)/2,m.y*2-(c.y+hub.y)/2,hub.x,hub.y);nx.stroke();
+  });
+  brokers.forEach(b=>{
+    nx.strokeStyle='rgba(167,139,250,.12)';
+    nx.beginPath();nx.moveTo(hub.x,hub.y);
+    const m=curve(hub,b,.5);nx.quadraticCurveTo(m.x*2-(hub.x+b.x)/2,m.y*2-(hub.y+b.y)/2,b.x,b.y);nx.stroke();
+  });
+  // zone labels
+  nx.fillStyle='#616d84';nx.font='700 11px monospace';
+  nx.fillText('CLIENTS',clients[0].x-24,Math.min(...clients.map(c=>c.y))-16);
+  nx.fillText('BROKERS',brokers[0].x-26,Math.min(...brokers.map(b=>b.y))-16);
+  // particles
+  particles.forEach(p=>{
+    p.t+=p.speed;
+    const pos=curve(p.from,p.to,Math.min(1,p.t));
+    // trail
+    const tail=curve(p.from,p.to,Math.max(0,p.t-.06));
+    nx.strokeStyle=p.color+'55';nx.lineWidth=2;
+    nx.beginPath();nx.moveTo(tail.x,tail.y);nx.lineTo(pos.x,pos.y);nx.stroke();
+    nx.beginPath();nx.arc(pos.x,pos.y,p.size,0,7);
+    nx.fillStyle=p.color;nx.fill();
+  });
+  const arrived=particles.filter(p=>p.t>=1);
+  particles=particles.filter(p=>p.t<1);
+  arrived.forEach(p=>p.onArrive&&p.onArrive());
+  // client nodes
+  clients.forEach(c=>{
+    if(c.glow>0)c.glow=Math.max(0,c.glow-.03);
+    if(c.glow){nx.beginPath();nx.arc(c.x,c.y,10+c.glow*6,0,7);nx.fillStyle=`rgba(96,165,250,${c.glow*.25})`;nx.fill();}
+    nx.beginPath();nx.arc(c.x,c.y,6,0,7);
+    nx.fillStyle='#12151d';nx.fill();nx.strokeStyle='#60a5fa';nx.lineWidth=1.5;nx.stroke();
+    nx.fillStyle='#616d84';nx.font='9px monospace';nx.fillText(c.id,c.x-46,c.y+3);
+  });
+  // hub
+  if(hub.glow>0)hub.glow=Math.max(0,hub.glow-.025);
+  const pulse=8+Math.sin(Date.now()/300)*2;
+  nx.beginPath();nx.arc(hub.x,hub.y,26+hub.glow*10+pulse*.3,0,7);
+  nx.fillStyle=`rgba(34,211,238,${.06+hub.glow*.2})`;nx.fill();
+  nx.beginPath();nx.arc(hub.x,hub.y,20,0,7);
+  nx.fillStyle='#0e1a20';nx.fill();nx.strokeStyle='#22d3ee';nx.lineWidth=2;nx.stroke();
+  nx.fillStyle='#22d3ee';nx.font='700 12px monospace';nx.fillText('BTS',hub.x-11,hub.y+4);
+  nx.fillStyle='#616d84';nx.font='9px monospace';nx.fillText('routing hub',hub.x-31,hub.y+34);
+  // broker nodes
+  brokers.forEach(b=>{
+    if(b.glow>0)b.glow=Math.max(0,b.glow-.03);
+    if(b.glow){nx.beginPath();nx.arc(b.x,b.y,12+b.glow*6,0,7);nx.fillStyle=`rgba(167,139,250,${b.glow*.25})`;nx.fill();}
+    nx.fillStyle='#12151d';nx.strokeStyle='#a78bfa';nx.lineWidth=1.5;
+    nx.beginPath();nx.rect(b.x-8,b.y-8,16,16);nx.fill();nx.stroke();
+    nx.fillStyle='#616d84';nx.font='9px monospace';nx.fillText(b.id,b.x+14,b.y+3);
+  });
+  requestAnimationFrame(drawNet);
+}
+// ================= per-second leg counters (header stats) =================
+const tpHist=[]; // {t, in, out}
+setInterval(()=>{
+  tpHist.push({t:Date.now(),in:legIn,out:legOut});
+  legIn=0;legOut=0;
+  if(tpHist.length>60)tpHist.shift();
+},1000);
+
+// ================= market data (from ui6) =================
+const SYMS={NVDA:178.55,AAPL:232.40,SPY:645.75,TSLA:341.20};
+const N_BUCKETS=40;
+let sel='NVDA', RES=5;
+const S={};
+for(const k in SYMS)S[k]={mid:SYMS[k],open:SYMS[k],quotes:[],fills:[]};
+
+function quote(k){
+  const s=S[k];
+  s.mid=Math.max(.01,s.mid*(1+(Math.random()-.5)*.0011));
+  const bps=.4+Math.abs(Math.sin(Date.now()/9000+k.length))*1.6+Math.random()*.8;
+  const half=s.mid*bps/1e4/2;
+  s.quotes.push({t:Date.now(),bid:s.mid-half,ask:s.mid+half});
+  const cutoff=Date.now()-31*N_BUCKETS*1000;
+  while(s.quotes.length&&s.quotes[0].t<cutoff)s.quotes.shift();
+}
+function mktFill(k){
+  const s=S[k],q=s.quotes[s.quotes.length-1];
+  if(!q)return;
+  const side=Math.random()>.5?'B':'S';
+  const px=side==='B'?q.ask:q.bid;
+  const sz=Math.random()<.06?(Math.floor(Math.random()*8)+2)*1000:(Math.floor(Math.random()*15)+1)*100;
+  s.fills.push({t:Date.now(),px,sz,side});
+  const cutoff=Date.now()-31*N_BUCKETS*1000;
+  while(s.fills.length&&s.fills[0].t<cutoff)s.fills.shift();
+}
+
+// ================= bucketing (shared time axis) =================
+function buckets(){
+  const s=S[sel],resMs=RES*1000;
+  const end=Math.floor(Date.now()/resMs)*resMs;
+  const out=[];
+  for(let i=N_BUCKETS-1;i>=0;i--)out.push({t0:end-i*resMs,bids:[],asks:[],fills:[]});
+  const first=out[0].t0;
+  const idx=t=>Math.floor((t-first)/resMs);
+  s.quotes.forEach(q=>{const i=idx(q.t);if(i>=0&&i<N_BUCKETS){out[i].bids.push(q.bid);out[i].asks.push(q.ask);}});
+  s.fills.forEach(f=>{const i=idx(f.t);if(i>=0&&i<N_BUCKETS)out[i].fills.push(f);});
+  out.forEach(b=>{
+    b.nQuotes=b.bids.length;
+    if(b.bids.length){b.bidMin=Math.min(...b.bids);b.bidMax=Math.max(...b.bids);
+      b.askMin=Math.min(...b.asks);b.askMax=Math.max(...b.asks);
+      let sp=0;for(let i=0;i<b.bids.length;i++)sp+=(b.asks[i]-b.bids[i])/((b.asks[i]+b.bids[i])/2)*1e4;
+      b.avgSpreadBps=sp/b.bids.length;}
+    if(b.fills.length){
+      const vol=b.fills.reduce((a,f)=>a+f.sz,0);
+      const buy=b.fills.reduce((a,f)=>a+(f.side==='B'?f.sz:0),0);
+      b.fillVol=vol;b.fillVwap=b.fills.reduce((a,f)=>a+f.px*f.sz,0)/vol;
+      b.buyRatio=buy/vol;b.imb=buy/vol*2-1;}
+  });
+  return out;
+}
+
+// ================= shared X mapping =================
+const PAD_R=56,PAD_L=4;
+function xMap(w){const bw=(w-PAD_L-PAD_R)/N_BUCKETS;return{bw,X:i=>PAD_L+i*bw+bw/2};}
+function setup(cv){
+  const dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
+  cv.width=w*dpr;cv.height=h*dpr;
+  const c=cv.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
+  return{c,w,h};
+}
+function drawTimeAxis(c,w,h,bks,labelEvery){
+  c.fillStyle='#616d84';c.font='9px monospace';c.strokeStyle='#1b2130';
+  const{X}=xMap(w);
+  bks.forEach((b,i)=>{
+    if(i%labelEvery)return;
+    const x=X(i);
+    c.beginPath();c.moveTo(x,0);c.lineTo(x,h-12);c.stroke();
+    const d=new Date(b.t0);
+    c.fillText(d.toTimeString().slice(3,8),x-13,h-2);
+  });
+}
+
+// ================= bid/ask/fills chart =================
+function drawBaf(bks){
+  const cv=document.getElementById('cvBaf'),{c,w,h}=setup(cv);
+  const{bw,X}=xMap(w);
+  let mn=1/0,mx=-1/0,maxVol=1;
+  bks.forEach(b=>{if(b.nQuotes){mn=Math.min(mn,b.bidMin);mx=Math.max(mx,b.askMax);}
+    if(b.fillVol)maxVol=Math.max(maxVol,b.fillVol);});
+  if(!isFinite(mn))return;
+  const r=(mx-mn)||1,padT=10,padB=16;
+  const Y=p=>padT+(mx-p)/r*(h-padT-padB);
+  c.strokeStyle='#1b2130';c.fillStyle='#616d84';c.font='10px monospace';
+  for(let i=0;i<=4;i++){const y=padT+(h-padT-padB)*i/4;
+    c.beginPath();c.moveTo(PAD_L,y);c.lineTo(w-PAD_R,y);c.stroke();
+    c.fillText((mx-r*i/4).toFixed(2),w-PAD_R+6,y+3);}
+  drawTimeAxis(c,w,h,bks,5);
+  const lineW=Math.max(4,bw*.34);
+  bks.forEach((b,i)=>{
+    if(!b.nQuotes)return;
+    const x=X(i);
+    c.strokeStyle='rgba(52,211,153,.45)';c.lineWidth=1;
+    b.bids.forEach(p=>{const y=Y(p);
+      c.beginPath();c.moveTo(x-lineW-1,y);c.lineTo(x-1,y);c.stroke();});
+    c.strokeStyle='rgba(251,113,133,.45)';
+    b.asks.forEach(p=>{const y=Y(p);
+      c.beginPath();c.moveTo(x+1,y);c.lineTo(x+lineW+1,y);c.stroke();});
+    if(b.fillVol){
+      const rad=3+Math.sqrt(b.fillVol/maxVol)*Math.min(14,bw*.5);
+      const g=b.buyRatio;
+      c.beginPath();c.arc(x,Y(b.fillVwap),rad,0,7);
+      c.fillStyle=`rgba(${Math.round(251-g*199)},${Math.round(113+g*98)},${Math.round(133+g*20)},.55)`;
+      c.fill();
+      c.strokeStyle=g>=.5?'#34d399':'#fb7185';c.lineWidth=1.2;c.stroke();
+    }
+  });
+  c.beginPath();let started=false;
+  bks.forEach((b,i)=>{if(!b.nQuotes)return;
+    const y=Y((b.bidMax+b.askMin)/2);
+    started?c.lineTo(X(i),y):c.moveTo(X(i),y);started=true;});
+  c.strokeStyle='rgba(34,211,238,.45)';c.lineWidth=1;c.stroke();
+}
+
+// ================= imbalance =================
+function drawImb(bks){
+  const{c,w,h}=setup(document.getElementById('cvImb'));
+  const{bw,X}=xMap(w);
+  const mid=(h-12)/2;
+  c.strokeStyle='#2a3040';c.beginPath();c.moveTo(PAD_L,mid);c.lineTo(w-PAD_R,mid);c.stroke();
+  drawTimeAxis(c,w,h,bks,5);
+  const barW=Math.max(2,bw*.6);
+  bks.forEach((b,i)=>{
+    if(b.imb===undefined)return;
+    const bh=Math.abs(b.imb)*(mid-4);
+    c.fillStyle=b.imb>=0?'rgba(52,211,153,.7)':'rgba(251,113,133,.7)';
+    c.fillRect(X(i)-barW/2,b.imb>=0?mid-bh:mid,barW,Math.max(1,bh));
+  });
+  c.fillStyle='#616d84';c.font='10px monospace';
+  c.fillText('+100%',w-PAD_R+6,10);c.fillText('-100%',w-PAD_R+6,h-14);
+}
+
+// ================= spread =================
+function drawSpr(bks){
+  const{c,w,h}=setup(document.getElementById('cvSpr'));
+  const{X}=xMap(w);
+  const vals=bks.map(b=>b.avgSpreadBps);
+  const mx=Math.max(...vals.filter(v=>v!==undefined),1);
+  const Y=v=>h-14-v/mx*(h-22);
+  drawTimeAxis(c,w,h,bks,5);
+  c.beginPath();let st=false;
+  vals.forEach((v,i)=>{if(v===undefined)return;st?c.lineTo(X(i),Y(v)):c.moveTo(X(i),Y(v));st=true;});
+  c.strokeStyle='#fbbf24';c.lineWidth=1.5;c.stroke();
+  vals.forEach((v,i)=>{if(v===undefined)return;
+    c.beginPath();c.arc(X(i),Y(v),2,0,7);c.fillStyle='#fbbf24';c.fill();});
+  const last=[...vals].reverse().find(v=>v!==undefined);
+  if(last!==undefined)document.getElementById('sprNow').textContent=last.toFixed(2)+' bps';
+  c.fillStyle='#616d84';c.font='10px monospace';c.fillText(mx.toFixed(1),w-PAD_R+6,12);c.fillText('0',w-PAD_R+6,h-14);
+}
+
+// ================= quote frequency =================
+function drawQr(bks){
+  const{c,w,h}=setup(document.getElementById('cvQr'));
+  const{bw,X}=xMap(w);
+  const mx=Math.max(...bks.map(b=>b.nQuotes),1);
+  drawTimeAxis(c,w,h,bks,5);
+  const barW=Math.max(2,bw*.6);
+  bks.forEach((b,i)=>{
+    const bh=b.nQuotes/mx*(h-22);
+    c.fillStyle='rgba(96,165,250,.65)';
+    c.fillRect(X(i)-barW/2,h-14-bh,barW,Math.max(1,bh));
+  });
+  const last=bks[bks.length-1];
+  document.getElementById('qrNow').textContent=last.nQuotes+' msgs';
+  c.fillStyle='#616d84';c.font='10px monospace';c.fillText(String(mx),w-PAD_R+6,12);
+}
+
+// ================= redraw all (shared axis) =================
+function redraw(){
+  const bks=buckets();
+  drawBaf(bks);drawImb(bks);drawSpr(bks);drawQr(bks);
+  document.getElementById('bafHd').textContent=
+    `${sel} — Bid/Ask/Fills · ${N_BUCKETS} × ${RES}s buckets`;
+  document.getElementById('resLbl').textContent=
+    `window: ${N_BUCKETS*RES}s (${N_BUCKETS} marks)`;
+}
+
+// ================= pickers =================
+const picker=document.getElementById('picker');
+function renderPicker(){
+  picker.innerHTML=Object.keys(SYMS).map(k=>`<button class="${k===sel?'on':''}" onclick="pick('${k}')">${k}</button>`).join('');
+}
+window.pick=k=>{sel=k;renderPicker();redraw();};
+document.querySelectorAll('#resPick button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#resPick button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');RES=+b.dataset.r;redraw();
+});
+// ================= orders (ui6-style + routing) =================
+const FILTERS=['ALL','NEW','PARTIAL','FILLED','CANCELLED','REJECTED'];
+let statusFilter='ALL',orders=[],oid=71000;
+const fdiv=document.getElementById('filters');
+fdiv.innerHTML=FILTERS.map(f=>`<button class="chip ${f==='ALL'?'on':''}" data-f="${f}">${f}</button>`).join('');
+fdiv.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+  fdiv.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on');statusFilter=c.dataset.f;renderOrders();
+});
+function newOrder(){
+  const cl=clients[Math.floor(Math.random()*N_CLIENTS)];
+  const bk=brokers[Math.floor(Math.random()*N_BROKERS)];
+  const ks=Object.keys(SYMS),sym=ks[Math.floor(Math.random()*ks.length)];
+  const o={id:'ORD-'+(oid++),time:new Date(),client:cl.id,broker:bk.id,sym,
+    side:Math.random()>.5?'BUY':'SELL',qty:(Math.floor(Math.random()*25)+1)*100,
+    filled:0,px:S[sym].mid*(1+(Math.random()-.5)*.003),avg:0,
+    status:'NEW',isNew:true};
+  orders.unshift(o);
+  if(orders.length>100)orders.pop();
+  launchOrder(cl,bk,o);
+  renderOrders();
+}
+// PARTIAL orders keep filling; each increment sends a fill dot broker→BTS→client
+function progressPartials(){
+  orders.forEach(o=>{
+    if(o.status!=='PARTIAL'||Math.random()>=.4)return;
+    o.filled=Math.min(o.qty,o.filled+Math.floor(o.qty*Math.random()/100)*100+100);
+    if(o.filled>=o.qty){o.filled=o.qty;o.status='FILLED';}
+    o.isNew=true;
+    const bk=brokers.find(b=>b.id===o.broker),cl=clients.find(c=>c.id===o.client);
+    if(bk&&cl)send(bk,hub,'fill',()=>{hub.glow=1;legOut++;
+      send(hub,cl,'fill',()=>{cl.glow=1;legIn++;});});
+  });
+  renderOrders();
+}
+function renderOrders(){
+  const rows=orders.filter(o=>statusFilter==='ALL'||o.status===statusFilter).slice(0,30);
+  document.getElementById('orderBody').innerHTML=rows.map(o=>`
+    <tr class="${o.isNew?'new-row':''}">
+      <td style="color:var(--dim)">${o.id}</td><td>${o.time.toTimeString().slice(0,8)}</td>
+      <td style="color:var(--blue)">${o.client}</td><td style="color:var(--violet)">${o.broker}</td>
+      <td><b>${o.sym}</b></td><td class="${o.side.toLowerCase()}">${o.side}</td>
+      <td>${o.qty.toLocaleString()}</td>
+      <td>${o.filled.toLocaleString()} <span class="progress"><i style="width:${o.qty?o.filled/o.qty*100:0}%"></i></span></td>
+      <td>${o.px.toFixed(2)}</td>
+      <td><span class="pill ${o.status}">${o.status}</span></td>
+    </tr>`).join('');
+  orders.forEach(o=>o.isNew=false);
+  const c=s=>orders.filter(o=>o.status===s).length;
+  document.getElementById('stats').textContent=
+    `${orders.length} total · ${c('NEW')} in-flight · ${c('PARTIAL')} working · ${c('FILLED')} filled · ${c('REJECTED')} rej`;
+}
+// header stats
+setInterval(()=>{
+  const last=tpHist[tpHist.length-1]||{in:0,out:0};
+  document.getElementById('hstat').innerHTML=
+    `<span>IN-FLIGHT <b>${particles.length}</b></span>
+     <span>CLIENT LEG <b>${last.in}/s</b></span>
+     <span>BROKER LEG <b>${last.out}/s</b></span>
+     <span><b>${new Date().toTimeString().slice(0,8)}</b></span>`;
+},1000);
+// ================= loops =================
+setInterval(()=>{for(const k in SYMS){quote(k);if(Math.random()<.5)quote(k);}},120);
+setInterval(()=>{for(const k in SYMS)if(Math.random()<.55)mktFill(k);},280);
+setInterval(redraw,500);
+setInterval(()=>{if(Math.random()<.8)newOrder();},700);
+setInterval(progressPartials,1200);
+setInterval(chatter,400);
+
+// ================= seed (backfill full window) =================
+(function seed(){
+  const span=31*N_BUCKETS*1000,now=Date.now();
+  for(const k in SYMS){
+    const s=S[k];
+    let t=now-span;
+    while(t<now){
+      s.mid=Math.max(.01,s.mid*(1+(Math.random()-.5)*.0011));
+      const bps=.4+Math.abs(Math.sin(t/9000+k.length))*1.6+Math.random()*.8;
+      const half=s.mid*bps/1e4/2;
+      s.quotes.push({t,bid:s.mid-half,ask:s.mid+half});
+      if(Math.random()<.35){
+        const side=Math.random()>.5?'B':'S';
+        s.fills.push({t,px:side==='B'?s.mid+half:s.mid-half,
+          sz:Math.random()<.06?(Math.floor(Math.random()*8)+2)*1000:(Math.floor(Math.random()*15)+1)*100,side});
+      }
+      t+=200+Math.random()*300;
+    }
+  }
+})();
+for(let i=0;i<10;i++)newOrder();
+computeLayout();
+renderPicker();redraw();renderOrders();
+requestAnimationFrame(drawNet);
+addEventListener('resize',()=>{computeLayout();redraw();});
+</script>
+</body>
+</html>
