@@ -2,7 +2,7 @@
 
 Reflex custom component wrapping the `@openmarketdata/webgl-plot` declarative `plot()` API.
 
-The JS dependency is installed straight from GitHub at frontend build time — no npm publish required.
+The JS dependency is installed straight from GitHub at frontend build time — no npm publish required. It points at the `release` branch, which the [release-branch workflow](../.github/workflows/release-branch.yml) rebuilds from `webglplot-v2` on every push (Reflex installs frontend packages with bun, which does not run a git dependency's `prepare` script, so the built `dist/` must already be committed on the installed ref).
 
 ## Install
 

@@ -18,9 +18,10 @@ class WebglPlotFigure(rx.NoSSRComponent):
         )
     """
 
-    # npm package installed from GitHub (no npm publish needed);
-    # the /react subpath exports the <WebglPlotFigure> React component.
-    library = "@openmarketdata/webgl-plot/react@github:openmarketdata/webgl-plot#webglplot-v2"
+    # npm package installed from GitHub (no npm publish needed). The `release`
+    # branch holds prebuilt dist/ (bun, used by Reflex, does not run `prepare`
+    # for git dependencies). The /react subpath exports <WebglPlotFigure>.
+    library = "@openmarketdata/webgl-plot/react@github:openmarketdata/webgl-plot#release"
 
     tag = "WebglPlotFigure"
 
