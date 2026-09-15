@@ -14,6 +14,8 @@ import { WebglLineRoll } from "./WebglLineRoll";
 import { WebglLinePlot } from "./WebglLinePlot";
 import { WebglLineThick } from "./WebglLineThick";
 import { WebglPolygonPlot, type PolygonConfig } from "./WebglPolygonPlot";
+import { WebglSegments } from "./WebglSegments";
+import { WebglDots } from "./WebglDots";
 import { UnifiedLinePlot } from "./UnifiedLinePlot";
 import type { LineConfig } from "./LineConfig";
 import { DebugLogger } from "./DebugLogger";
@@ -48,6 +50,8 @@ export {
   WebglLineThick,
   WebglScatterAcc,
   WebglPolygonPlot,
+  WebglSegments,
+  WebglDots,
   
   // Legacy classes (consider deprecating)
   WebglLine,
