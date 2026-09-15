@@ -1,0 +1,50 @@
+{
+  "name": "@openmarketdata/webgl-plot",
+  "version": "1.1.2",
+  "description": "High-performance 2D plotting library based on native WebGL",
+  "main": "./dist/webglplot.umd.js",
+  "module": "./dist/webglplot.mjs",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/webglplot.d.ts",
+      "require": "./dist/webglplot.umd.js",
+      "import": "./dist/webglplot.mjs"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "require": "./dist/react.js",
+      "import": "./dist/react.mjs"
+    }
+  },
+  "keywords": [
+    "webgl",
+    "plot",
+    "realtime",
+    "opengl",
+    "2d",
+    "high-performance"
+  ],
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danchitnis/webgl-plot.git"
+  },
+  "author": "Danial Chitnis",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/danchitnis/webgl-plot/issues"
+  },
+  "homepage": "https://github.com/danchitnis/webgl-plot",
+  "dependencies": {},
+  "gitHead": "1c30d597bf248fbc541a5a951befb87bb3c434d9"
+}
