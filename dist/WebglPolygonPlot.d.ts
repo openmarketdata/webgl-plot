@@ -1,0 +1,90 @@
+export interface PolygonConfig {
+    fillColor: [number, number, number, number];
+    strokeColor: [number, number, number, number];
+    strokeWeight: number;
+    isFilled: boolean;
+    isStroked: boolean;
+    points: Float32Array;
+    scale?: [number, number];
+    offset?: [number, number];
+    enabled?: boolean;
+}
+export declare class WebglPolygonPlot {
+    private gl;
+    private prog;
+    private strokeProg;
+    private fillVAO;
+    private strokeVAO;
+    private uniformLocations;
+    private strokeUniformLocations;
+    polygonsConfig: PolygonConfig[];
+    numPolygons: number;
+    private vertexBuffer;
+    private strokeVertexBuffer;
+    private polygonStarts;
+    private polygonLengths;
+    private strokePolygonStarts;
+    private strokePolygonLengths;
+    private cachedState;
+    private tempArrays;
+    constructor(gl: WebGL2RenderingContext);
+    initPolygons(polygonsConfig: PolygonConfig[]): void;
+    cleanup(): void;
+    updatePolygonPoints(polygonId: number, points: Float32Array): void;
+    updatePolygonTransform(polygonId: number, scale: [number, number], offset: [number, number]): void;
+    updatePolygonStyle(polygonId: number, style: Partial<Pick<PolygonConfig, "fillColor" | "strokeColor" | "strokeWeight" | "isFilled" | "isStroked">>): void;
+    setPolygonEnabled(polygonId: number, enabled: boolean): void;
+    setGlobalTransform(scale: [number, number], offset: [number, number]): void;
+    draw(): void;
+    private _getUniformLocations;
+    private _setupViewportTracking;
+    private _updateViewportIfChanged;
+    private _normalizePolygonConfig;
+    private _validatePolygonId;
+    private _setupFillVAO;
+    private _setupStrokeVAO;
+    private _regeneratePolygonStroke;
+    private _generateStrokeGeometry;
+    private _createShaderProgram;
+    private _compileShader;
+    static createTriangle(config: {
+        center: [number, number];
+        radius: number;
+        rotation?: number;
+        fillColor?: [number, number, number, number];
+        strokeColor?: [number, number, number, number];
+        strokeWeight?: number;
+        isFilled?: boolean;
+        isStroked?: boolean;
+        scale?: [number, number];
+        offset?: [number, number];
+        enabled?: boolean;
+    }): PolygonConfig;
+    static createSquare(config: {
+        center: [number, number];
+        size: number;
+        rotation?: number;
+        fillColor?: [number, number, number, number];
+        strokeColor?: [number, number, number, number];
+        strokeWeight?: number;
+        isFilled?: boolean;
+        isStroked?: boolean;
+        scale?: [number, number];
+        offset?: [number, number];
+        enabled?: boolean;
+    }): PolygonConfig;
+    static createCircle(config: {
+        center: [number, number];
+        radius: number;
+        segments?: number;
+        fillColor?: [number, number, number, number];
+        strokeColor?: [number, number, number, number];
+        strokeWeight?: number;
+        isFilled?: boolean;
+        isStroked?: boolean;
+        scale?: [number, number];
+        offset?: [number, number];
+        enabled?: boolean;
+    }): PolygonConfig;
+}
+//# sourceMappingURL=WebglPolygonPlot.d.ts.map
