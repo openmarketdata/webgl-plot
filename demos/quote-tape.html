@@ -27,7 +27,7 @@
 <body>
     <div class="items">
         <p><strong>Quote Tape</strong> - every bid, ask and trade update, bucketed into <span id="intervalText">5s</span> bars, simulated 100ms feed</p>
-        <p>Bid/ask: <code>WebglSegments</code> thin horizontal lines spanning the bar, colored lighter at the start of the bar and darker toward its end. Trades: <code>WebglDots</code> with diameter &prop; log(size). Axes: 2D canvas overlay.</p>
+        <p>Bid/ask: <code>WebglSegments</code> thin horizontal lines spanning the bar, colored lighter at the start of the bar and darker toward its end. Trades: one <code>WebglDots</code> dot per bar at the volume-weighted average price, diameter &prop; log(total size). Axes: 2D canvas overlay.</p>
 
         <div class="controls">
             <fieldset id="intervalGroup">
@@ -39,7 +39,7 @@
             <div class="legend">
                 <span><span class="swatch bid"></span>bid (start &rarr; end of bar)</span>
                 <span><span class="swatch ask"></span>ask (start &rarr; end of bar)</span>
-                <span><span class="dot"></span>trade, size &rarr; diameter</span>
+                <span><span class="dot"></span>trades per bar (VWAP), total size &rarr; diameter</span>
                 <span id="stats"></span>
             </div>
         </div>
