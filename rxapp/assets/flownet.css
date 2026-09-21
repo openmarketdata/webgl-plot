@@ -1,0 +1,61 @@
+:root{
+  --bg:#0b0d12; --panel:#12151d; --border:#242a38; --text:#d6dce8; --dim:#616d84;
+  --green:#34d399; --red:#fb7185; --blue:#60a5fa; --amber:#fbbf24; --cyan:#22d3ee; --violet:#a78bfa;
+  --green-bg:rgba(52,211,153,.15); --red-bg:rgba(251,113,133,.15); --blue-bg:rgba(96,165,250,.15);
+  --amber-bg:rgba(251,191,36,.15); --gray-bg:rgba(97,109,132,.15);
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+}
+html,body{margin:0;padding:0;background:var(--bg);overflow:hidden}
+.fn *{margin:0;padding:0;box-sizing:border-box}
+.fn{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;height:100vh;width:100vw;display:flex;flex-direction:column;overflow:hidden}
+.fn header{display:flex;align-items:center;gap:14px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--border)}
+.fn .logo{color:var(--cyan);font-weight:700;letter-spacing:1.5px;font-size:13px}
+.fn .sym-pick,.fn .res-pick{display:flex;gap:2px}
+.fn .sym-pick button,.fn .res-pick button{background:transparent;border:1px solid transparent;color:var(--dim);padding:4px 12px;font:inherit;font-weight:700;cursor:pointer;border-radius:5px}
+.fn .sym-pick button.on{border-color:var(--cyan);color:var(--cyan);background:rgba(34,211,238,.08)}
+.fn .res-pick{margin-left:auto;background:#181c27;border-radius:7px;padding:2px}
+.fn .res-pick button.on{background:var(--violet);color:#0b0d12}
+.fn .res-lbl{color:var(--dim);font-size:11px}
+.fn .hstat{display:flex;gap:18px;color:var(--dim);font-size:11px}
+.fn .hstat b{color:var(--text)}
+.fn main{flex:1;display:flex;flex-direction:column;gap:6px;padding:6px;min-height:0}
+.fn .box{background:var(--panel);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.fn .box .hd{display:flex;justify-content:space-between;padding:5px 12px;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);border-bottom:1px solid var(--border)}
+.fn .lg{font-size:10px;color:var(--dim)}
+.fn .cvw{flex:1;min-height:0;position:relative}
+.fn canvas{display:block;width:100%;height:100%}
+/* top = network, bottom = orders + synced charts */
+.fn .net-box{flex:1}
+.fn .bottom{flex:1.2;display:grid;grid-template-columns:1fr 1fr;gap:6px;min-height:0}
+.fn .charts{display:flex;flex-direction:column;gap:6px;min-height:0}
+.fn .baf-box{flex:3} .fn .imb-box{flex:1} .fn .spr-box{flex:1} .fn .qr-box{flex:1}
+/* WebGL chart + HTML axes (PAD_L=4, PAD_R=56, time axis 12px, as in ui7) */
+.fn .plot{position:absolute;left:4px;right:56px;top:0;bottom:12px}
+.fn .yax{position:absolute;left:calc(100% - 50px);top:0;bottom:12px;font-size:10px;color:var(--dim);pointer-events:none}
+.fn .yax span{position:absolute;transform:translateY(-50%);white-space:nowrap}
+.fn .tax{position:absolute;left:4px;right:56px;top:0;bottom:0;font-size:9px;color:var(--dim);pointer-events:none}
+.fn .tax span{position:absolute;bottom:0;transform:translateX(-50%);white-space:nowrap}
+.fn .progress{height:4px;background:#242a38;border-radius:3px;width:60px;overflow:hidden;display:inline-block;vertical-align:middle}
+.fn .progress i{display:block;height:100%;background:var(--green);border-radius:3px;transition:width .5s}
+/* orders */
+.fn .orders{display:flex;flex-direction:column;min-height:0}
+.fn .filters{display:flex;gap:8px;padding:8px 12px 4px}
+.fn .chip{padding:4px 13px;border-radius:99px;border:1px solid var(--border);background:transparent;font:inherit;font-size:11px;font-weight:700;color:var(--dim);cursor:pointer}
+.fn .chip.on{background:var(--blue);border-color:var(--blue);color:#0b0d12}
+.fn .scroll{flex:1;overflow-y:auto}
+.fn table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:12px}
+.fn th{position:sticky;top:0;background:var(--panel);z-index:1;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);padding:7px 10px;border-bottom:1px solid var(--border);font-weight:400}
+.fn td{padding:6px 10px;border-bottom:1px solid #1a1f2b}
+.fn tr.new-row{animation:hl 1s}
+@keyframes hl{0%{background:rgba(96,165,250,.18)}100%{background:transparent}}
+.fn .pill{padding:2px 9px;border-radius:99px;font-size:10px;font-weight:700}
+.fn .pill.NEW{background:var(--blue-bg);color:var(--blue)}
+.fn .pill.PARTIAL{background:var(--amber-bg);color:var(--amber)}
+.fn .pill.FILLED{background:var(--green-bg);color:var(--green)}
+.fn .pill.CANCELLED{background:var(--gray-bg);color:var(--dim)}
+.fn .pill.REJECTED{background:var(--red-bg);color:var(--red)}
+.fn .buy{color:var(--green);font-weight:700} .fn .sell{color:var(--red);font-weight:700}
+.fn .up{color:var(--green)} .fn .down{color:var(--red)}
+.fn .c-dim{color:var(--dim)} .fn .c-blue{color:var(--blue)} .fn .c-violet{color:var(--violet)}
+.fn .c-green{color:var(--green)} .fn .c-red{color:var(--red)} .fn .c-amber{color:var(--amber)}
+::-webkit-scrollbar{width:7px} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}

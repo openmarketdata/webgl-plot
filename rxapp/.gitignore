@@ -1,0 +1,5 @@
+.web/
+.states/
+reflex.lock/
+__pycache__/
+*.db
