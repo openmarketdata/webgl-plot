@@ -13,23 +13,46 @@
 
 import { UnifiedLinePlot } from "./UnifiedLinePlot";
 import { WebglScatterAcc } from "./WebglScatterAcc";
+import { WebglSegments } from "./WebglSegments";
+import { WebglDots } from "./WebglDots";
+import { WebglPolygonPlot } from "./WebglPolygonPlot";
 import { ColorRGBA } from "./ColorRGBA";
-import { setupCanvasAndWebGL, clearCanvas } from "./WebGLHelpers";
+import { setupCanvasAndWebGL, clearCanvas, handleCanvasResize } from "./WebGLHelpers";
 
-export type PlotType = "line" | "scatter";
+/**
+ * - "line": polyline through the points.
+ * - "scatter": square markers of a single size (`markerSize`).
+ * - "segments": independent line segments; points are consumed in pairs
+ *   ((x[0],y[0])->(x[1],y[1]), (x[2],y[2])->(x[3],y[3]), ...).
+ * - "bubble": round markers with per-point radius (`sizes`) and color (`colors`).
+ * - "bar": vertical bars from `baseline` to y, `width` wide (data units).
+ */
+export type PlotType = "line" | "scatter" | "segments" | "bubble" | "bar";
+
+export type RGBA = [number, number, number, number];
 
 export interface PlotSeries {
+  /** Per-series type; defaults to the figure's `type`. */
+  type?: PlotType;
   x: number[] | Float32Array;
   y: number[] | Float32Array;
   /** RGBA color, each channel in [0, 1]. */
-  color?: [number, number, number, number];
+  color?: RGBA;
   /** Line thickness in pixels (line plots only). */
   thickness?: number;
   label?: string;
+  /** Per-point radius in pixels (bubble only). Falls back to markerSize / 2. */
+  sizes?: number[];
+  /** Per-point colors (bubble and bar). Falls back to `color`. */
+  colors?: RGBA[];
+  /** Bar width in x data units (bar only). Defaults to 80% of the smallest x spacing. */
+  width?: number;
+  /** Bars extend from this y value (bar only). Defaults to 0. */
+  baseline?: number;
 }
 
 export interface PlotConfig {
-  /** Plot type. Defaults to "line". */
+  /** Default plot type for series that do not set their own. Defaults to "line". */
   type?: PlotType;
   /** X axis range as [min, max]. Defaults to the data extent. */
   "x-range"?: [number, number];
@@ -65,11 +88,15 @@ export interface PlotHandle {
   update: (changes: PlotUpdate) => void;
   /** Re-render the plot. */
   redraw: () => void;
+  /** Fit the drawing buffer to the canvas's CSS size (times devicePixelRatio) and re-render. */
+  resize: () => void;
   /** Release WebGL resources. */
   destroy: () => void;
 }
 
-const DEFAULT_COLORS: [number, number, number, number][] = [
+const PLOT_TYPES: readonly PlotType[] = ["line", "scatter", "segments", "bubble", "bar"];
+
+const DEFAULT_COLORS: RGBA[] = [
   [0.12, 0.47, 0.71, 1],
   [1.0, 0.5, 0.05, 1],
   [0.17, 0.63, 0.17, 1],
@@ -116,6 +143,11 @@ function computeRange(
       if (v < min) min = v;
       if (v > max) max = v;
     }
+    if (axis === "y" && s.type === "bar" && values.length > 0) {
+      const base = s.baseline ?? 0;
+      if (base < min) min = base;
+      if (base > max) max = base;
+    }
   }
   if (!isFinite(min) || !isFinite(max)) {
     throw new Error(`plot: cannot compute ${axis}-range from empty data`);
@@ -145,6 +177,11 @@ function toClipSpace(
   return points;
 }
 
+interface Artist {
+  draw: () => void;
+  cleanup: () => void;
+}
+
 interface Scene {
   xRange: [number, number];
   yRange: [number, number];
@@ -152,15 +189,124 @@ interface Scene {
   cleanup: () => void;
 }
 
+interface Ranges {
+  x: [number, number];
+  y: [number, number];
+}
+
+function lineArtist(gl: WebGL2RenderingContext, s: PlotSeries, color: RGBA, r: Ranges): Artist {
+  const plotter = new UnifiedLinePlot(gl, 1);
+  plotter.initLines([
+    { points: toClipSpace(s, r.x, r.y), color, thickness: s.thickness ?? 1, enabled: true },
+  ]);
+  return { draw: () => plotter.draw(), cleanup: () => plotter.cleanup() };
+}
+
+function scatterArtist(
+  gl: WebGL2RenderingContext,
+  canvas: HTMLCanvasElement,
+  s: PlotSeries,
+  color: RGBA,
+  r: Ranges,
+  markerSize: number
+): Artist {
+  const plotter = new WebglScatterAcc(gl, Math.max(1, s.x.length));
+  plotter.setSquareSize(markerSize / canvas.width);
+  plotter.setColor(new ColorRGBA(1, 1, 1, 1));
+  const colors = new Uint8Array(s.x.length * 3);
+  for (let j = 0; j < s.x.length; j++) {
+    colors[j * 3] = Math.round(color[0] * 255);
+    colors[j * 3 + 1] = Math.round(color[1] * 255);
+    colors[j * 3 + 2] = Math.round(color[2] * 255);
+  }
+  plotter.addSquare(toClipSpace(s, r.x, r.y), colors);
+  return {
+    draw: () => plotter.draw(),
+    cleanup: () => {
+      // WebglScatterAcc has no cleanup method; drop the reference.
+    },
+  };
+}
+
+function segmentsArtist(gl: WebGL2RenderingContext, s: PlotSeries, color: RGBA, r: Ranges): Artist {
+  if (s.x.length % 2 !== 0) {
+    throw new Error("plot: segments series needs an even number of points (pairs of endpoints)");
+  }
+  const pts = toClipSpace(s, r.x, r.y);
+  const n = s.x.length / 2;
+  const plotter = new WebglSegments(gl, Math.max(1, n));
+  for (let i = 0; i < n; i++) {
+    const c = s.colors?.[i] ?? color;
+    plotter.addSegment(pts[i * 4], pts[i * 4 + 1], pts[i * 4 + 2], pts[i * 4 + 3], c);
+  }
+  return { draw: () => plotter.draw(), cleanup: () => plotter.cleanup() };
+}
+
+function bubbleArtist(
+  gl: WebGL2RenderingContext,
+  s: PlotSeries,
+  color: RGBA,
+  r: Ranges,
+  markerSize: number
+): Artist {
+  const pts = toClipSpace(s, r.x, r.y);
+  const plotter = new WebglDots(gl, Math.max(1, s.x.length));
+  const dpr = window.devicePixelRatio || 1;
+  for (let i = 0; i < s.x.length; i++) {
+    const radius = (s.sizes?.[i] ?? markerSize / 2) * dpr;
+    plotter.addDot(pts[i * 2], pts[i * 2 + 1], radius, s.colors?.[i] ?? color);
+  }
+  return { draw: () => plotter.draw(), cleanup: () => plotter.cleanup() };
+}
+
+function defaultBarWidth(x: number[] | Float32Array): number {
+  if (x.length < 2) return 1;
+  const sorted = Array.from(x).sort((a, b) => a - b);
+  let gap = Infinity;
+  for (let i = 1; i < sorted.length; i++) {
+    const d = sorted[i] - sorted[i - 1];
+    if (d > 0 && d < gap) gap = d;
+  }
+  return isFinite(gap) ? gap * 0.8 : 1;
+}
+
+function barArtist(gl: WebGL2RenderingContext, s: PlotSeries, color: RGBA, r: Ranges): Artist {
+  if (s.x.length !== s.y.length) {
+    throw new Error("plot: series x and y must have the same length");
+  }
+  const half = (s.width ?? defaultBarWidth(s.x)) / 2;
+  const base = s.baseline ?? 0;
+  const xSpan = r.x[1] - r.x[0];
+  const ySpan = r.y[1] - r.y[0];
+  const cx = (v: number) => ((v - r.x[0]) / xSpan) * 2 - 1;
+  const cy = (v: number) => ((v - r.y[0]) / ySpan) * 2 - 1;
+  const plotter = new WebglPolygonPlot(gl);
+  plotter.initPolygons(
+    Array.from(s.x, (x, i) => {
+      const x0 = cx(x - half);
+      const x1 = cx(x + half);
+      const y0 = cy(base);
+      const y1 = cy(s.y[i]);
+      return {
+        points: new Float32Array([x0, y0, x1, y0, x1, y1, x0, y1]),
+        fillColor: s.colors?.[i] ?? color,
+        strokeColor: [0, 0, 0, 0] as RGBA,
+        strokeWeight: 0,
+        isFilled: true,
+        isStroked: false,
+        enabled: true,
+      };
+    })
+  );
+  return { draw: () => plotter.draw(), cleanup: () => plotter.cleanup() };
+}
+
 function buildScene(
   config: PlotConfig,
   canvas: HTMLCanvasElement,
   gl: WebGL2RenderingContext
 ): Scene {
-  const type: PlotType = config.type ?? "line";
-  if (type !== "line" && type !== "scatter") {
-    throw new Error(`plot: unsupported type "${String(type)}"`);
-  }
+  const defaultType: PlotType = config.type ?? "line";
 
   const seriesList: PlotSeries[] = Array.isArray(config.data)
     ? config.data
@@ -168,56 +314,55 @@ function buildScene(
   if (seriesList.length === 0) {
     throw new Error("plot: data must contain at least one series");
   }
-
-  const xRange = computeRange(seriesList, "x", config["x-range"]);
-  const yRange = computeRange(seriesList, "y", config["y-range"]);
-
-  let drawFn: () => void;
-  let cleanupFn: () => void;
-
-  if (type === "line") {
-    const plotter = new UnifiedLinePlot(gl, seriesList.length);
-    plotter.initLines(
-      seriesList.map((s, i) => ({
-        points: toClipSpace(s, xRange, yRange),
-        color: s.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
-        thickness: s.thickness ?? 1,
-        enabled: true,
-      }))
-    );
-    drawFn = () => plotter.draw();
-    cleanupFn = () => plotter.cleanup();
-  } else {
-    const totalPoints = seriesList.reduce((sum, s) => sum + s.x.length, 0);
-    const plotter = new WebglScatterAcc(gl, totalPoints);
-    plotter.setSquareSize((config.markerSize ?? 8) / canvas.width);
-    plotter.setColor(new ColorRGBA(1, 1, 1, 1));
-    for (let i = 0; i < seriesList.length; i++) {
-      const s = seriesList[i];
-      const points = toClipSpace(s, xRange, yRange);
-      const rgba = s.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length];
-      const colors = new Uint8Array(s.x.length * 3);
-      for (let j = 0; j < s.x.length; j++) {
-        colors[j * 3] = Math.round(rgba[0] * 255);
-        colors[j * 3 + 1] = Math.round(rgba[1] * 255);
-        colors[j * 3 + 2] = Math.round(rgba[2] * 255);
-      }
-      plotter.addSquare(points, colors);
+  const typed = seriesList.map((s) => ({ ...s, type: s.type ?? defaultType }));
+  for (const s of typed) {
+    if (!PLOT_TYPES.includes(s.type)) {
+      throw new Error(`plot: unsupported type "${String(s.type)}"`);
     }
-    drawFn = () => plotter.draw();
-    cleanupFn = () => {
-      // WebglScatterAcc has no cleanup method; drop the reference.
-    };
+    if (s.x.length !== s.y.length) {
+      throw new Error("plot: series x and y must have the same length");
+    }
   }
 
-  return { xRange, yRange, draw: drawFn, cleanup: cleanupFn };
+  const ranges: Ranges = {
+    x: computeRange(typed, "x", config["x-range"]),
+    y: computeRange(typed, "y", config["y-range"]),
+  };
+  const markerSize = config.markerSize ?? 8;
+
+  const artists: Artist[] = typed.map((s, i) => {
+    const color = s.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+    if (s.x.length === 0) {
+      return { draw: () => undefined, cleanup: () => undefined };
+    }
+    switch (s.type) {
+      case "scatter":
+        return scatterArtist(gl, canvas, s, color, ranges, markerSize);
+      case "segments":
+        return segmentsArtist(gl, s, color, ranges);
+      case "bubble":
+        return bubbleArtist(gl, s, color, ranges, markerSize);
+      case "bar":
+        return barArtist(gl, s, color, ranges);
+      default:
+        return lineArtist(gl, s, color, ranges);
+    }
+  });
+
+  return {
+    xRange: ranges.x,
+    yRange: ranges.y,
+    draw: () => artists.forEach((a) => a.draw()),
+    cleanup: () => artists.forEach((a) => a.cleanup()),
+  };
 }
 
 /**
  * Render a plot from a matplotlib-like JSON configuration.
  *
- * Supported types: "line" (default) and "scatter". The returned handle's
- * `update()` accepts partial config changes and re-renders.
+ * Supported types (per figure or per series): "line" (default), "scatter",
+ * "segments", "bubble" and "bar". The returned handle's `update()` accepts
+ * partial config changes and re-renders.
  */
 export function plot(config: PlotConfig): PlotHandle {
   const canvas = resolveCanvas(config.canvas);
@@ -235,22 +380,27 @@ export function plot(config: PlotConfig): PlotHandle {
   };
   redraw();
 
+  const rebuild = (next: PlotConfig) => {
+    const nextScene = buildScene(next, canvas, gl);
+    scene.cleanup();
+    current = next;
+    scene = nextScene;
+    handle.xRange = scene.xRange;
+    handle.yRange = scene.yRange;
+    redraw();
+  };
+
   const handle: PlotHandle = {
     canvas,
     gl,
     xRange: scene.xRange,
     yRange: scene.yRange,
-    update: (changes: PlotUpdate) => {
-      const next: PlotConfig = { ...current, ...changes, canvas };
-      const nextScene = buildScene(next, canvas, gl);
-      scene.cleanup();
-      current = next;
-      scene = nextScene;
-      handle.xRange = scene.xRange;
-      handle.yRange = scene.yRange;
-      redraw();
-    },
+    update: (changes: PlotUpdate) => rebuild({ ...current, ...changes, canvas }),
     redraw,
+    resize: () => {
+      handleCanvasResize(canvas, gl);
+      rebuild(current);
+    },
     destroy: () => scene.cleanup(),
   };
   return handle;

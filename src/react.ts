@@ -24,6 +24,11 @@ export interface WebglPlotFigureProps {
   width?: number;
   /** Canvas height in pixels. Default 600. */
   height?: number;
+  /**
+   * Size the canvas to fill its parent (CSS width/height 100%) and refit the
+   * drawing buffer whenever the element is resized. `width`/`height` are ignored.
+   */
+  autoResize?: boolean;
   style?: CSSProperties;
   className?: string;
 }
@@ -43,17 +48,29 @@ export function WebglPlotFigure(props: WebglPlotFigureProps): ReactElement {
   }, [props.config]);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!props.autoResize || !canvas) return;
+    const observer = new ResizeObserver(() => figureRef.current?.resize());
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [props.autoResize]);
+
+  useEffect(() => {
     return () => {
       figureRef.current?.destroy();
       figureRef.current = null;
     };
   }, []);
 
+  const style: CSSProperties | undefined = props.autoResize
+    ? { display: "block", width: "100%", height: "100%", ...props.style }
+    : props.style;
+
   return createElement("canvas", {
     ref: canvasRef,
-    width: props.width ?? 800,
-    height: props.height ?? 600,
-    style: props.style,
+    width: props.autoResize ? undefined : props.width ?? 800,
+    height: props.autoResize ? undefined : props.height ?? 600,
+    style,
     className: props.className,
   });
 }
