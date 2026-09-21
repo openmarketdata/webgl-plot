@@ -185,5 +185,5 @@ def index() -> rx.Component:
     )
 
 
-app = rx.App(stylesheets=["/flownet.css"], theme=rx.theme(appearance="dark"))
+app = rx.App(stylesheets=["/flownet.css"])
 app.add_page(index, title="FlowNet — Order Routing Topology", on_load=FlowState.run)
