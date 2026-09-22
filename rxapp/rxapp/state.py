@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 
 import reflex as rx
@@ -10,7 +9,7 @@ import reflex as rx
 from . import charts
 from .sim import FILTERS, N_BUCKETS, RESOLUTIONS, SIM, SYMS, Order
 
-TICK_S = 0.5
+TICK_MS = 500
 MAX_ROWS = 30
 
 
@@ -42,10 +41,10 @@ class FlowState(rx.State):
     status_filter: str = "ALL"
 
     # charts (webgl-plot configs) + HTML axis labels
-    baf: dict = {}
-    imb: dict = {}
-    spr: dict = {}
-    qr: dict = {}
+    baf: dict = charts.EMPTY
+    imb: dict = charts.EMPTY
+    spr: dict = charts.EMPTY
+    qr: dict = charts.EMPTY
     baf_ylabels: list[dict] = []
     spr_ylabels: list[dict] = []
     qr_ylabels: list[dict] = []
@@ -62,9 +61,8 @@ class FlowState(rx.State):
     inflight: int = 0
     leg_in: int = 0
     leg_out: int = 0
-    clock: str = ""
 
-    _running: bool = False
+    _started: bool = False
     _last_event_id: int = 0
 
     @rx.var
@@ -103,7 +101,6 @@ class FlowState(rx.State):
         self.net_events = SIM.events_since(self._last_event_id)
         if self.net_events:
             self._last_event_id = self.net_events[-1]["id"]
-        self.clock = time.strftime("%H:%M:%S", time.localtime(now))
 
     @rx.event
     def pick_symbol(self, sym: str):
@@ -127,23 +124,15 @@ class FlowState(rx.State):
         self.leg_out = int(s.get("legOut", 0))
 
     @rx.event
-    def stop(self):
-        self._running = False
+    def tick(self, _now: str = ""):
+        """Advance the shared simulation and refresh this client's view.
 
-    @rx.event(background=True)
-    async def run(self):
-        async with self:
-            if self._running:
-                return
-            self._running = True
+        Driven by the page's rx.moment interval, so it runs exactly while the
+        page is mounted and stops on its own when the tab goes away.
+        """
+        if not self._started:
+            self._started = True
             # animate only the most recent routing activity for a late joiner
             self._last_event_id = max(0, SIM.event_id - 20)
-            SIM.step()
-            self._refresh()
-        while True:
-            await asyncio.sleep(TICK_S)
-            async with self:
-                if not self._running:
-                    return
-                SIM.step()
-                self._refresh()
+        SIM.step()
+        self._refresh()
