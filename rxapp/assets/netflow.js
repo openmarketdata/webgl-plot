@@ -24,7 +24,7 @@ function createNet() {
   const brokers = BROKER_IDS.map((id) => ({ id, glow: 0, x: 0, y: 0 }));
   const hub = { glow: 0, x: 0, y: 0 };
   const byId = new Map([...clients, ...brokers].map((n) => [n.id, n]));
-  const net = { clients, brokers, hub, particles: [], legIn: 0, legOut: 0, layout: null };
+  const net = { clients, brokers, hub, particles: [], legIn: 0, legOut: 0, layout: null, lastFrame: 0 };
 
   const send = (from, to, type, onArrive) => {
     net.particles.push({
@@ -103,8 +103,12 @@ function createNet() {
     nx.fillStyle = "#616d84"; nx.font = "700 11px monospace";
     nx.fillText("CLIENTS", clients[0].x - 24, Math.min(...clients.map((c) => c.y)) - 16);
     nx.fillText("BROKERS", brokers[0].x - 26, Math.min(...brokers.map((b) => b.y)) - 16);
+    // advance by wall-clock time so a slow frame rate doesn't pile particles up
+    const now = performance.now();
+    const frames = net.lastFrame ? Math.min(6, (now - net.lastFrame) / (1000 / 60)) : 1;
+    net.lastFrame = now;
     net.particles.forEach((p) => {
-      p.t += p.speed;
+      p.t += p.speed * frames;
       const pos = curve(p.from, p.to, Math.min(1, p.t));
       const tail = curve(p.from, p.to, Math.max(0, p.t - 0.06));
       nx.strokeStyle = p.color + "55"; nx.lineWidth = 2;
@@ -116,7 +120,7 @@ function createNet() {
     net.particles = net.particles.filter((p) => p.t < 1);
     arrived.forEach((p) => p.onArrive && p.onArrive());
     clients.forEach((c) => {
-      if (c.glow > 0) c.glow = Math.max(0, c.glow - 0.03);
+      if (c.glow > 0) c.glow = Math.max(0, c.glow - 0.03 * frames);
       if (c.glow) {
         nx.beginPath(); nx.arc(c.x, c.y, 10 + c.glow * 6, 0, 7);
         nx.fillStyle = `rgba(96,165,250,${c.glow * 0.25})`; nx.fill();
@@ -125,7 +129,7 @@ function createNet() {
       nx.fillStyle = "#12151d"; nx.fill(); nx.strokeStyle = "#60a5fa"; nx.lineWidth = 1.5; nx.stroke();
       nx.fillStyle = "#616d84"; nx.font = "9px monospace"; nx.fillText(c.id, c.x - 46, c.y + 3);
     });
-    if (hub.glow > 0) hub.glow = Math.max(0, hub.glow - 0.025);
+    if (hub.glow > 0) hub.glow = Math.max(0, hub.glow - 0.025 * frames);
     const pulse = 8 + Math.sin(Date.now() / 300) * 2;
     nx.beginPath(); nx.arc(hub.x, hub.y, 26 + hub.glow * 10 + pulse * 0.3, 0, 7);
     nx.fillStyle = `rgba(34,211,238,${0.06 + hub.glow * 0.2})`; nx.fill();
@@ -134,7 +138,7 @@ function createNet() {
     nx.fillStyle = "#22d3ee"; nx.font = "700 12px monospace"; nx.fillText("BTS", hub.x - 11, hub.y + 4);
     nx.fillStyle = "#616d84"; nx.font = "9px monospace"; nx.fillText("routing hub", hub.x - 31, hub.y + 34);
     brokers.forEach((b) => {
-      if (b.glow > 0) b.glow = Math.max(0, b.glow - 0.03);
+      if (b.glow > 0) b.glow = Math.max(0, b.glow - 0.03 * frames);
       if (b.glow) {
         nx.beginPath(); nx.arc(b.x, b.y, 12 + b.glow * 6, 0, 7);
         nx.fillStyle = `rgba(167,139,250,${b.glow * 0.25})`; nx.fill();
