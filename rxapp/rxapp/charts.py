@@ -31,6 +31,16 @@ def rgba(rgb: tuple[int, int, int], a: float) -> RGBA:
     return [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, a]
 
 
+# valid plot() config with nothing to draw; used until the first tick arrives
+EMPTY: dict = {
+    "type": "line",
+    "x-range": X_RANGE,
+    "y-range": [0, 1],
+    "data": {"x": [], "y": []},
+    "backgroundColor": BG,
+}
+
+
 class Label(TypedDict):
     text: str
     pos: float

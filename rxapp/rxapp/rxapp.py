@@ -4,7 +4,7 @@ import reflex as rx
 from reflex_webgl_plot import webgl_plot_figure
 
 from .netflow import net_flow
-from .state import FlowState
+from .state import TICK_MS, FlowState
 
 ORDER_COLUMNS = ["ID", "Time", "Client", "Broker", "Sym", "Side", "Qty", "Filled", "Px", "Status"]
 
@@ -39,7 +39,8 @@ def header() -> rx.Component:
             rx.el.span("IN-FLIGHT ", rx.el.b(FlowState.inflight)),
             rx.el.span("CLIENT LEG ", rx.el.b(f"{FlowState.leg_in}/s")),
             rx.el.span("BROKER LEG ", rx.el.b(f"{FlowState.leg_out}/s")),
-            rx.el.span(rx.el.b(FlowState.clock)),
+            # the clock doubles as the app's heartbeat: each interval advances the sim
+            rx.el.span(rx.el.b(rx.moment(interval=TICK_MS, format="HH:mm:ss", on_change=FlowState.tick))),
             class_name="hstat",
         ),
     )
@@ -181,9 +182,8 @@ def index() -> rx.Component:
             rx.el.div(orders_box(), charts(), class_name="bottom"),
         ),
         class_name="fn",
-        on_unmount=FlowState.stop,
     )
 
 
 app = rx.App(stylesheets=["/flownet.css"])
-app.add_page(index, title="FlowNet — Order Routing Topology", on_load=FlowState.run)
+app.add_page(index, title="FlowNet — Order Routing Topology", on_load=FlowState.tick)
